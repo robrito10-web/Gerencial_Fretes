@@ -3,128 +3,81 @@ import { createIcons, icons } from 'lucide';
 export class AuthView {
   constructor(authService) {
     this.authService = authService;
-    this.onLogin = null;
     this.isLogin = true;
   }
 
   render() {
     const app = document.getElementById('app');
-    app.innerHTML = `
-      <div class="auth-container">
-        <div class="auth-card">
-          <div class="auth-header">
-            <h1><i data-lucide="truck"></i> Gerencial Fretes</h1>
-            <p id="auth-subtitle">Entre para gerenciar seus fretes</p>
+    
+    app.innerHTML = this.getAuthLayout(`
+      <div class="auth-header">
+        <h1><i data-lucide="truck"></i> Gerencial Fretes</h1>
+        <p id="auth-subtitle">Entre para gerenciar seus fretes</p>
+      </div>
+      <div id="auth-alert"></div>
+      <form id="auth-form">
+        <div id="register-fields" class="hidden">
+          <div class="form-group">
+            <label class="form-label">Nome Completo</label>
+            <input type="text" class="form-input" id="name" required>
           </div>
-          
-          <div id="auth-alert"></div>
-          
-          <form id="auth-form">
-            <input type="hidden" id="invite-admin-id" value="">
-            <div id="register-fields" class="hidden">
-              <div class="form-group">
-                <label class="form-label">Nome Completo</label>
-                <input type="text" class="form-input" id="name" required>
-              </div>
-              
-              <div class="form-group">
-                <label class="form-label">Telefone</label>
-                <input type="tel" class="form-input" id="phone" required>
-              </div>
-              
-              <div class="form-group hidden" id="perfil-group">
-                <label class="form-label">Perfil</label>
-                <select class="form-select" id="perfil" required>
-                  <option value="">Selecione...</option>
-                  <option value="admin">Administrador</option>
-                  <option value="motorista">Motorista</option>
-                </select>
-              </div>
-              
-              <div class="form-group hidden" id="admin-select-group">
-                <label class="form-label">Administrador Responsável</label>
-                <select class="form-select" id="adminVinculado">
-                  <option value="">Selecione...</option>
-                </select>
-              </div>
-            </div>
-            
-            <div class="form-group">
-              <label class="form-label">Email</label>
-              <input type="email" class="form-input" id="email" required>
-            </div>
-            
-            <div class="form-group">
-              <label class="form-label">Senha</label>
-              <input type="password" class="form-input" id="password" required>
-            </div>
-            
-            <button type="submit" class="btn btn-primary" style="width: 100%;">
-              <i data-lucide="log-in"></i>
-              <span id="submit-text">Entrar</span>
-            </button>
-          </form>
-          
-          <div class="auth-toggle">
-            <span id="toggle-text">Não tem uma conta?</span>
-            <a id="toggle-link">Cadastre-se</a>
+          <div class="form-group">
+            <label class="form-label">Telefone</label>
+            <input type="tel" class="form-input" id="phone" required>
           </div>
         </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" class="form-input" id="email" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Senha</label>
+          <input type="password" class="form-input" id="password" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%;">
+          <i data-lucide="log-in"></i>
+          <span id="submit-text">Entrar</span>
+        </button>
+      </form>
+      <div class="auth-toggle">
+        <span id="toggle-text">Não tem uma conta?</span>
+        <a id="toggle-link">Cadastre-se</a>
       </div>
-    `;
+    `);
 
     this.setupEventListeners();
-    this.handleInvite();
     createIcons({ icons });
   }
 
-  handleInvite() {
-    const params = new URLSearchParams(window.location.search);
-    const adminId = params.get('invite_admin_id');
-
-    if (adminId) {
-      const allUsers = this.authService.getAllUsers();
-      const admin = allUsers.find(u => u.id === adminId && u.perfil === 'admin');
-
-      if (admin) {
-        this.toggleMode(false);
-        document.getElementById('auth-toggle').classList.add('hidden');
-        document.getElementById('perfil-group').classList.add('hidden');
-        document.getElementById('perfil').value = 'motorista';
-        document.getElementById('admin-select-group').classList.add('hidden');
-        document.getElementById('invite-admin-id').value = adminId;
-        document.getElementById('auth-subtitle').innerHTML = `Cadastro de motorista para <strong>${admin.nome}</strong>`;
-      }
-    } else {
-      document.getElementById('perfil-group').classList.remove('hidden');
-    }
+  getAuthLayout(innerContent) {
+    return `
+      <div class="auth-container">
+        <div class="auth-card">
+          ${innerContent}
+        </div>
+      </div>
+    `;
   }
 
   setupEventListeners() {
     const form = document.getElementById('auth-form');
     const toggleLink = document.getElementById('toggle-link');
+    if (!form || !toggleLink) return;
 
-    toggleLink.addEventListener('click', () => {
+    toggleLink.addEventListener('click', (e) => {
+      e.preventDefault();
       this.toggleMode(!this.isLogin);
     });
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
+      const button = e.target.querySelector('button[type="submit"]');
+      this.setLoading(button, true);
+      
       if (this.isLogin) {
-        this.handleLogin();
+        this.handleLogin().finally(() => this.setLoading(button, false));
       } else {
-        this.handleRegister();
-      }
-    });
-
-    const perfilSelect = document.getElementById('perfil');
-    perfilSelect.addEventListener('change', (e) => {
-      const adminGroup = document.getElementById('admin-select-group');
-      if (e.target.value === 'motorista') {
-        adminGroup.classList.remove('hidden');
-        this.loadAdmins();
-      } else {
-        adminGroup.classList.add('hidden');
+        this.handleRegister().finally(() => this.setLoading(button, false));
       }
     });
   }
@@ -148,71 +101,58 @@ export class AuthView {
       submitText.textContent = 'Cadastrar';
       toggleText.textContent = 'Já tem uma conta?';
       toggleLink.textContent = 'Entrar';
-      subtitle.textContent = 'Crie sua conta - 7 dias grátis';
+      subtitle.textContent = 'Crie sua conta de Administrador';
     }
   }
 
-  loadAdmins() {
-    const users = this.authService.getAllUsers();
-    const admins = users.filter(u => u.perfil === 'admin');
-    const select = document.getElementById('adminVinculado');
-    
-    select.innerHTML = '<option value="">Selecione...</option>';
-    admins.forEach(admin => {
-      const option = document.createElement('option');
-      option.value = admin.id;
-      option.textContent = admin.nome;
-      select.appendChild(option);
-    });
-  }
-
-  handleLogin() {
+  async handleLogin() {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
 
-    const result = this.authService.login(email, password);
+    const result = await this.authService.login(email, password);
 
     if (result.success) {
       this.showAlert('Login realizado com sucesso! Redirecionando...', 'success');
-      setTimeout(() => {
-        if (this.onLogin) this.onLogin();
-      }, 1000);
+      // The App.js onAuthStateChange will handle the redirect
     } else {
       this.showAlert(result.error, 'danger');
     }
   }
 
-  handleRegister() {
-    const inviteAdminId = document.getElementById('invite-admin-id').value;
-    
+  async handleRegister() {
     const userData = {
       nome: document.getElementById('name').value,
       email: document.getElementById('email').value,
       telefone: document.getElementById('phone').value,
-      perfil: document.getElementById('perfil').value,
       password: document.getElementById('password').value
     };
-
-    if (inviteAdminId) {
-      userData.adminVinculado = inviteAdminId;
-      userData.perfil = 'motorista';
-    } else if (userData.perfil === 'motorista') {
-      userData.adminVinculado = document.getElementById('adminVinculado').value;
-      if (!userData.adminVinculado) {
-        this.showAlert('Selecione um administrador responsável', 'danger');
+    
+    if (userData.password.length < 6) {
+        this.showAlert('A senha deve ter pelo menos 6 caracteres.', 'danger');
         return;
-      }
     }
 
-    const result = this.authService.register(userData);
+    const result = await this.authService.register(userData);
 
     if (result.success) {
-      this.showAlert('Cadastro realizado com sucesso! Você será redirecionado.', 'success');
-      setTimeout(() => {
-        if (this.onLogin) this.onLogin();
-      }, 1500);
+      this.showAlert('Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta.', 'success');
+      // The App.js onAuthStateChange will handle redirect after email confirmation
     } else {
       this.showAlert(result.error, 'danger');
+    }
+  }
+
+  setLoading(button, isLoading) {
+    if (!button) return;
+    if (isLoading) {
+      button.disabled = true;
+      button.innerHTML = `<div class="spinner" style="width: 20px; height: 20px; border-width: 2px;"></div>`;
+    } else {
+      button.disabled = false;
+      const icon = this.isLogin ? 'log-in' : 'user-plus';
+      const text = this.isLogin ? 'Entrar' : 'Cadastrar';
+      button.innerHTML = `<i data-lucide="${icon}"></i><span>${text}</span>`;
+      createIcons({ icons });
     }
   }
 

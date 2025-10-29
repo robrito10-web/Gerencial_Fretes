@@ -7,30 +7,38 @@ export class App {
   constructor() {
     this.authService = new AuthService();
     this.router = new Router(this);
+    this.user = null;
+    this.profile = null;
   }
 
-  init() {
+  async init() {
     this.router.setHandler(this.handleRoute.bind(this));
-    this.router.start();
+
+    // Listen for auth state changes
+    this.authService.onAuthStateChange(async (event, session) => {
+      this.user = session?.user || null;
+      if (this.user) {
+        this.profile = await this.authService.getProfile(this.user.id);
+      } else {
+        this.profile = null;
+      }
+      this.router.resolve(); // Re-evaluate route on auth change
+    });
   }
 
-  handleRoute() {
+  async handleRoute() {
     const path = window.location.pathname;
-    const user = this.authService.getCurrentUser();
-
-    if (user) {
-      // User is logged in
+    
+    // The onAuthStateChange has already updated this.user and this.profile
+    if (this.user && this.profile) {
       if (path === '/') {
-        // If they are on the root/login page, redirect to dashboard
         this.router.replace('/dashboard');
       } else {
-        // For any other authenticated page, show the dashboard
         this.showDashboard();
       }
     } else {
       // User is not logged in
-      // Allow access only to the root path (which handles login and invites)
-      if (path !== '/') {
+      if (path.startsWith('/dashboard')) {
         this.router.replace('/');
       } else {
         this.showAuthView();
@@ -41,21 +49,16 @@ export class App {
   showAuthView() {
     const authView = new AuthView(this.authService);
     authView.render();
-    authView.onLogin = () => {
-      // After login, navigate to the dashboard
-      this.router.navigate('/dashboard');
-    };
+    // onLogin is now handled by onAuthStateChange
   }
 
   showDashboard() {
-    const user = this.authService.getCurrentUser();
-    // The router guard ensures user exists, but we double-check.
-    if (!user) {
-      this.handleRoute(); // Re-evaluate route if user is suddenly gone
+    if (!this.user || !this.profile) {
+      this.router.replace('/');
       return;
     }
 
-    const dashboardView = new DashboardView(user);
+    const dashboardView = new DashboardView(this.user, this.profile);
     dashboardView.render();
     
     dashboardView.onLogout = () => {
@@ -63,9 +66,8 @@ export class App {
     };
   }
 
-  logout() {
-    this.authService.logout();
-    // Navigate to login page after logout
-    this.router.navigate('/');
+  async logout() {
+    await this.authService.logout();
+    // onAuthStateChange will handle the redirection
   }
 }

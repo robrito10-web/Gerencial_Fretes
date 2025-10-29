@@ -1,286 +1,266 @@
+import { supabase } from '../supabaseClient.js';
+
 export class DataService {
-  constructor() {
-    this.carsKey = 'gerencial_fretes_cars';
-    this.tiresKey = 'gerencial_fretes_tires';
-    this.tireBrandsKey = 'gerencial_fretes_tire_brands';
-    this.cyclesKey = 'gerencial_fretes_cycles';
-    this.freightsKey = 'gerencial_fretes_freights';
-    this.fuelingsKey = 'gerencial_fretes_fuelings';
-    this.expensesKey = 'gerencial_fretes_expenses';
-    this.settingsKey = 'gerencial_fretes_settings';
-    this.permissionsKey = 'gerencial_fretes_permissions';
-  }
 
-  _getArrayFromStorage(key) {
-    const dataJson = localStorage.getItem(key);
-    if (!dataJson) {
-      return [];
+  async _uploadFileAndGetUrl(bucket, file, filePath) {
+    if (!file) return { data: null, error: null };
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error(`Upload error for ${bucket}:`, uploadError);
+      return { data: null, error: uploadError };
     }
-    try {
-      const data = JSON.parse(dataJson);
-      if (Array.isArray(data)) {
-        return data;
-      }
-      console.warn(`Corrupted data for key ${key} (not an array). Resetting.`);
-      localStorage.setItem(key, '[]');
-      return [];
-    } catch (error) {
-      console.error(`Error parsing JSON for key ${key}. Resetting.`, error);
-      localStorage.setItem(key, '[]');
-      return [];
-    }
+
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(uploadData.path);
+    return { data: { publicUrl: urlData.publicUrl }, error: null };
   }
 
-  getCars(adminId) {
-    const cars = this._getArrayFromStorage(this.carsKey);
-    return cars.filter(car => car.adminId === adminId);
+  // Cars
+  async getCars(adminId) {
+    const { data, error } = await supabase.from('cars').select('*').eq('admin_id', adminId);
+    return error ? [] : data;
   }
 
-  saveCar(car, adminId) {
-    const cars = this._getArrayFromStorage(this.carsKey);
-    const newCar = {
-      id: Date.now().toString(),
-      ...car,
-      adminId,
-      createdAt: new Date().toISOString()
-    };
-    cars.push(newCar);
-    localStorage.setItem(this.carsKey, JSON.stringify(cars));
-    return newCar;
+  async saveCar(car, adminId) {
+    const { data, error } = await supabase.from('cars').insert([{ ...car, admin_id: adminId }]).select();
+    return { data, error };
   }
 
-  updateCar(carId, updates) {
-    const cars = this._getArrayFromStorage(this.carsKey);
-    const index = cars.findIndex(c => c.id === carId);
-    if (index !== -1) {
-      cars[index] = { ...cars[index], ...updates };
-      localStorage.setItem(this.carsKey, JSON.stringify(cars));
-      return cars[index];
-    }
-    return null;
+  async deleteCar(carId) {
+    const { error } = await supabase.from('cars').delete().eq('id', carId);
+    return { error };
   }
 
-  deleteCar(carId) {
-    const cars = this._getArrayFromStorage(this.carsKey);
-    const filtered = cars.filter(c => c.id !== carId);
-    localStorage.setItem(this.carsKey, JSON.stringify(filtered));
+  // Tire Brands
+  async getTireBrands() {
+    const { data, error } = await supabase.from('tire_brands').select('*');
+    return error ? [] : data;
   }
 
-  getTireBrands() {
-    return this._getArrayFromStorage(this.tireBrandsKey);
+  async saveTireBrand(brandName) {
+    const { data, error } = await supabase.from('tire_brands').insert([{ name: brandName }]).select();
+    return { data, error };
   }
 
-  saveTireBrand(brand) {
-    const brands = this._getArrayFromStorage(this.tireBrandsKey);
-    const newBrand = {
-      id: Date.now().toString(),
-      name: brand,
-      createdAt: new Date().toISOString()
-    };
-    brands.push(newBrand);
-    localStorage.setItem(this.tireBrandsKey, JSON.stringify(brands));
-    return newBrand;
+  // Tire Changes
+  async getTireChanges(adminId) {
+    const { data, error } = await supabase.from('tire_changes').select('*').eq('admin_id', adminId);
+    return error ? [] : data;
   }
 
-  getTireChanges(adminId) {
-    const changes = this._getArrayFromStorage(this.tiresKey);
-    return changes.filter(change => change.adminId === adminId);
+  async saveTireChange(change, adminId) {
+    const { data, error } = await supabase.from('tire_changes').insert([{ ...change, admin_id: adminId }]).select();
+    return { data, error };
   }
 
-  saveTireChange(change, adminId) {
-    const changes = this._getArrayFromStorage(this.tiresKey);
-    const newChange = {
-      id: Date.now().toString(),
-      ...change,
-      adminId,
-      createdAt: new Date().toISOString()
-    };
-    changes.push(newChange);
-    localStorage.setItem(this.tiresKey, JSON.stringify(changes));
-    return newChange;
-  }
-
-  getCycles(adminId, driverId = null) {
-    const cycles = this._getArrayFromStorage(this.cyclesKey);
-    let filtered = cycles.filter(cycle => cycle.adminId === adminId);
-    
+  // Cycles
+  async getCycles(adminId, driverId = null) {
+    let query = supabase.from('cycles').select('*').eq('admin_id', adminId);
     if (driverId) {
-      filtered = filtered.filter(cycle => cycle.driverId === driverId);
+      query = query.eq('driver_id', driverId);
     }
-    
-    return filtered;
+    const { data, error } = await query;
+    return error ? [] : data;
   }
 
-  saveCycle(cycle, adminId) {
-    const cycles = this._getArrayFromStorage(this.cyclesKey);
-    const newCycle = {
-      id: Date.now().toString(),
-      ...cycle,
-      adminId,
-      createdAt: new Date().toISOString()
-    };
-    cycles.push(newCycle);
-    localStorage.setItem(this.cyclesKey, JSON.stringify(cycles));
-    return newCycle;
-  }
-
-  updateCycle(cycleId, updates) {
-    const cycles = this._getArrayFromStorage(this.cyclesKey);
-    const index = cycles.findIndex(c => c.id === cycleId);
-    if (index !== -1) {
-      cycles[index] = { ...cycles[index], ...updates };
-      localStorage.setItem(this.cyclesKey, JSON.stringify(cycles));
-      return cycles[index];
+  async saveCycle(cycle, adminId, photoFile) {
+    let photoUrl = null;
+    if (photoFile) {
+      const filePath = `${adminId}/${Date.now()}_${photoFile.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('cycle_photos', photoFile, filePath);
+      if (error) return { data: null, error };
+      photoUrl = data.publicUrl;
     }
-    return null;
+    const cycleData = { ...cycle, admin_id: adminId, km_saida_photo_url: photoUrl };
+    const { data, error } = await supabase.from('cycles').insert([cycleData]).select().single();
+    return { data, error };
   }
 
-  deleteCycle(cycleId) {
-    let cycles = this._getArrayFromStorage(this.cyclesKey);
-    cycles = cycles.filter(c => c.id !== cycleId);
-    localStorage.setItem(this.cyclesKey, JSON.stringify(cycles));
-
-    let freights = this._getArrayFromStorage(this.freightsKey);
-    freights = freights.filter(f => f.cycleId !== cycleId);
-    localStorage.setItem(this.freightsKey, JSON.stringify(freights));
-
-    let fuelings = this._getArrayFromStorage(this.fuelingsKey);
-    fuelings = fuelings.filter(f => f.cycleId !== cycleId);
-    localStorage.setItem(this.fuelingsKey, JSON.stringify(fuelings));
-
-    let expenses = this._getArrayFromStorage(this.expensesKey);
-    expenses = expenses.filter(e => e.cycleId !== cycleId);
-    localStorage.setItem(this.expensesKey, JSON.stringify(expenses));
-  }
-
-  getFreights(cycleId) {
-    const freights = this._getArrayFromStorage(this.freightsKey);
-    return freights.filter(f => f.cycleId === cycleId);
-  }
-
-  saveFreight(freight, cycleId) {
-    const freights = this._getArrayFromStorage(this.freightsKey);
-    const newFreight = {
-      id: Date.now().toString(),
-      ...freight,
-      cycleId,
-      createdAt: new Date().toISOString()
-    };
-    freights.push(newFreight);
-    localStorage.setItem(this.freightsKey, JSON.stringify(freights));
-    return newFreight;
-  }
-
-  updateFreight(freightId, updates) {
-    const freights = this._getArrayFromStorage(this.freightsKey);
-    const index = freights.findIndex(f => f.id === freightId);
-    if (index !== -1) {
-      freights[index] = { ...freights[index], ...updates };
-      localStorage.setItem(this.freightsKey, JSON.stringify(freights));
-      return freights[index];
+  async updateCycle(cycleId, updates, photoFile) {
+    let photoUrl = updates.km_saida_photo_url;
+    if (photoFile) {
+      const filePath = `${updates.admin_id}/${cycleId}/${Date.now()}_${photoFile.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('cycle_photos', photoFile, filePath);
+      if (error) return { data: null, error };
+      photoUrl = data.publicUrl;
     }
-    return null;
+    const cycleData = { ...updates, km_saida_photo_url: photoUrl };
+    const { data, error } = await supabase.from('cycles').update(cycleData).eq('id', cycleId).select().single();
+    return { data, error };
   }
 
-  deleteFreight(freightId) {
-    const freights = this._getArrayFromStorage(this.freightsKey);
-    const filtered = freights.filter(f => f.id !== freightId);
-    localStorage.setItem(this.freightsKey, JSON.stringify(filtered));
+  async deleteCycle(cycleId) {
+    // Supabase cascade delete will handle related records
+    const { error } = await supabase.from('cycles').delete().eq('id', cycleId);
+    return { error };
   }
 
-  getFuelings(cycleId) {
-    const fuelings = this._getArrayFromStorage(this.fuelingsKey);
-    return fuelings.filter(f => f.cycleId === cycleId);
+  // Freights
+  async getFreights(cycleId) {
+    const { data, error } = await supabase.from('freights').select('*').eq('cycle_id', cycleId);
+    return error ? [] : data;
   }
 
-  saveFueling(fueling, cycleId) {
-    const fuelings = this._getArrayFromStorage(this.fuelingsKey);
-    const newFueling = {
-      id: Date.now().toString(),
-      ...fueling,
-      cycleId,
-      createdAt: new Date().toISOString()
-    };
-    fuelings.push(newFueling);
-    localStorage.setItem(this.fuelingsKey, JSON.stringify(fuelings));
-    return newFueling;
-  }
-
-  updateFueling(fuelingId, updates) {
-    const fuelings = this._getArrayFromStorage(this.fuelingsKey);
-    const index = fuelings.findIndex(f => f.id === fuelingId);
-    if (index !== -1) {
-      fuelings[index] = { ...fuelings[index], ...updates };
-      localStorage.setItem(this.fuelingsKey, JSON.stringify(fuelings));
-      return fuelings[index];
+  async saveFreight(freight, cycleId, files) {
+    let departureUrl = null, arrivalUrl = null;
+    if (files.departure) {
+      const path = `${cycleId}/${Date.now()}_departure_${files.departure.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('freight_photos', files.departure, path);
+      if (error) return { data: null, error };
+      departureUrl = data.publicUrl;
     }
-    return null;
-  }
-
-  deleteFueling(fuelingId) {
-    const fuelings = this._getArrayFromStorage(this.fuelingsKey);
-    const filtered = fuelings.filter(f => f.id !== fuelingId);
-    localStorage.setItem(this.fuelingsKey, JSON.stringify(filtered));
-  }
-
-  getExpenses(cycleId) {
-    const expenses = this._getArrayFromStorage(this.expensesKey);
-    return expenses.filter(e => e.cycleId === cycleId);
-  }
-
-  saveExpense(expense, cycleId) {
-    const expenses = this._getArrayFromStorage(this.expensesKey);
-    const newExpense = {
-      id: Date.now().toString(),
-      ...expense,
-      cycleId,
-      createdAt: new Date().toISOString()
-    };
-    expenses.push(newExpense);
-    localStorage.setItem(this.expensesKey, JSON.stringify(expenses));
-    return newExpense;
-  }
-
-  updateExpense(expenseId, updates) {
-    const expenses = this._getArrayFromStorage(this.expensesKey);
-    const index = expenses.findIndex(e => e.id === expenseId);
-    if (index !== -1) {
-      expenses[index] = { ...expenses[index], ...updates };
-      localStorage.setItem(this.expensesKey, JSON.stringify(expenses));
-      return expenses[index];
+    if (files.arrival) {
+      const path = `${cycleId}/${Date.now()}_arrival_${files.arrival.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('freight_photos', files.arrival, path);
+      if (error) return { data: null, error };
+      arrivalUrl = data.publicUrl;
     }
-    return null;
+    const freightData = { ...freight, cycle_id: cycleId, departure_photo_url: departureUrl, arrival_photo_url: arrivalUrl };
+    const { data, error } = await supabase.from('freights').insert([freightData]).select().single();
+    return { data, error };
   }
 
-  deleteExpense(expenseId) {
-    const expenses = this._getArrayFromStorage(this.expensesKey);
-    const filtered = expenses.filter(e => e.id !== expenseId);
-    localStorage.setItem(this.expensesKey, JSON.stringify(filtered));
+  async updateFreight(freightId, updates, files) {
+    let departureUrl = updates.departure_photo_url, arrivalUrl = updates.arrival_photo_url;
+    if (files.departure) {
+      const path = `${updates.cycle_id}/${freightId}_departure_${files.departure.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('freight_photos', files.departure, path);
+      if (error) return { data: null, error };
+      departureUrl = data.publicUrl;
+    }
+    if (files.arrival) {
+      const path = `${updates.cycle_id}/${freightId}_arrival_${files.arrival.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('freight_photos', files.arrival, path);
+      if (error) return { data: null, error };
+      arrivalUrl = data.publicUrl;
+    }
+    const freightData = { ...updates, departure_photo_url: departureUrl, arrival_photo_url: arrivalUrl };
+    const { data, error } = await supabase.from('freights').update(freightData).eq('id', freightId).select().single();
+    return { data, error };
   }
 
-  getSettings(adminId) {
-    const settings = JSON.parse(localStorage.getItem(this.settingsKey) || '{}');
-    return settings[adminId] || { commissionPercentage: 10 };
+  async deleteFreight(freightId) {
+    const { error } = await supabase.from('freights').delete().eq('id', freightId);
+    return { error };
   }
 
-  saveSettings(adminId, settings) {
-    const allSettings = JSON.parse(localStorage.getItem(this.settingsKey) || '{}');
-    allSettings[adminId] = settings;
-    localStorage.setItem(this.settingsKey, JSON.stringify(allSettings));
+  // Fuelings
+  async getFuelings(cycleId) {
+    const { data, error } = await supabase.from('fuelings').select('*').eq('cycle_id', cycleId);
+    return error ? [] : data;
   }
 
-  getPermissions(driverId) {
-    const permissions = JSON.parse(localStorage.getItem(this.permissionsKey) || '{}');
-    return permissions[driverId] || {
-      viewTireChanges: true,
-      viewFuelings: true,
-      viewExpenses: true
-    };
+  async saveFueling(fueling, cycleId, files) {
+    let kmUrl = null, receiptUrl = null;
+    if (files.km) {
+      const path = `${cycleId}/${Date.now()}_km_${files.km.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('fueling_photos', files.km, path);
+      if (error) return { data: null, error };
+      kmUrl = data.publicUrl;
+    }
+    if (files.receipt) {
+      const path = `${cycleId}/${Date.now()}_receipt_${files.receipt.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('fueling_photos', files.receipt, path);
+      if (error) return { data: null, error };
+      receiptUrl = data.publicUrl;
+    }
+    const fuelingData = { ...fueling, cycle_id: cycleId, km_photo_url: kmUrl, receipt_photo_url: receiptUrl };
+    const { data, error } = await supabase.from('fuelings').insert([fuelingData]).select().single();
+    return { data, error };
   }
 
-  savePermissions(driverId, permissions) {
-    const allPermissions = JSON.parse(localStorage.getItem(this.permissionsKey) || '{}');
-    allPermissions[driverId] = permissions;
-    localStorage.setItem(this.permissionsKey, JSON.stringify(allPermissions));
+  async updateFueling(fuelingId, updates, files) {
+    let kmUrl = updates.km_photo_url, receiptUrl = updates.receipt_photo_url;
+    if (files.km) {
+      const path = `${updates.cycle_id}/${fuelingId}_km_${files.km.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('fueling_photos', files.km, path);
+      if (error) return { data: null, error };
+      kmUrl = data.publicUrl;
+    }
+    if (files.receipt) {
+      const path = `${updates.cycle_id}/${fuelingId}_receipt_${files.receipt.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('fueling_photos', files.receipt, path);
+      if (error) return { data: null, error };
+      receiptUrl = data.publicUrl;
+    }
+    const fuelingData = { ...updates, km_photo_url: kmUrl, receipt_photo_url: receiptUrl };
+    const { data, error } = await supabase.from('fuelings').update(fuelingData).eq('id', fuelingId).select().single();
+    return { data, error };
+  }
+
+  async deleteFueling(fuelingId) {
+    const { error } = await supabase.from('fuelings').delete().eq('id', fuelingId);
+    return { error };
+  }
+
+  // Expenses
+  async getExpenses(cycleId) {
+    const { data, error } = await supabase.from('expenses').select('*').eq('cycle_id', cycleId);
+    return error ? [] : data;
+  }
+
+  async saveExpense(expense, cycleId, receiptFile) {
+    let receiptUrl = null;
+    if (receiptFile) {
+      const path = `${cycleId}/${Date.now()}_${receiptFile.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('expense_photos', receiptFile, path);
+      if (error) return { data: null, error };
+      receiptUrl = data.publicUrl;
+    }
+    const expenseData = { ...expense, cycle_id: cycleId, receipt_photo_url: receiptUrl };
+    const { data, error } = await supabase.from('expenses').insert([expenseData]).select().single();
+    return { data, error };
+  }
+
+  async updateExpense(expenseId, updates, receiptFile) {
+    let receiptUrl = updates.receipt_photo_url;
+    if (receiptFile) {
+      const path = `${updates.cycle_id}/${expenseId}_${receiptFile.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('expense_photos', receiptFile, path);
+      if (error) return { data: null, error };
+      receiptUrl = data.publicUrl;
+    }
+    const expenseData = { ...updates, receipt_photo_url: receiptUrl };
+    const { data, error } = await supabase.from('expenses').update(expenseData).eq('id', expenseId).select().single();
+    return { data, error };
+  }
+
+  async deleteExpense(expenseId) {
+    const { error } = await supabase.from('expenses').delete().eq('id', expenseId);
+    return { error };
+  }
+
+  // Settings
+  async getSettings(adminId) {
+    const { data, error } = await supabase.from('settings').select('commission_percentage').eq('admin_id', adminId).single();
+    if (error && error.code === 'PGRST116') {
+      return { commission_percentage: 10 }; // Default
+    }
+    return error ? { commission_percentage: 10 } : data;
+  }
+
+  async saveSettings(adminId, settings) {
+    const { error } = await supabase.from('settings').upsert({ admin_id: adminId, ...settings });
+    return { error };
+  }
+
+  // Permissions
+  async getPermissions(driverId) {
+    const { data, error } = await supabase.from('driver_permissions').select('*').eq('driver_id', driverId).single();
+    if (error && error.code === 'PGRST116') {
+      return { view_tire_changes: true, view_fuelings: true, view_expenses: true }; // Default
+    }
+    return error ? { view_tire_changes: true, view_fuelings: true, view_expenses: true } : data;
+  }
+
+  async savePermissions(driverId, permissions) {
+    const { error } = await supabase.from('driver_permissions').upsert({ driver_id: driverId, ...permissions });
+    return { error };
   }
 }

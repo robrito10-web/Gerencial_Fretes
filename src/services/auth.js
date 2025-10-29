@@ -1,88 +1,145 @@
+import { supabase } from '../supabaseClient.js';
+
 export class AuthService {
-  constructor() {
-    this.storageKey = 'gerencial_fretes_user';
-    this.usersKey = 'gerencial_fretes_users';
+  
+  onAuthStateChange(callback) {
+    return supabase.auth.onAuthStateChange(callback);
   }
 
-  getCurrentUser() {
-    const userJson = localStorage.getItem(this.storageKey);
-    return userJson ? JSON.parse(userJson) : null;
-  }
-
-  getAllUsers() {
-    const usersJson = localStorage.getItem(this.usersKey);
-    return usersJson ? JSON.parse(usersJson) : [];
-  }
-
-  saveUsers(users) {
-    localStorage.setItem(this.usersKey, JSON.stringify(users));
-  }
-
-  login(email, password) {
-    const users = this.getAllUsers();
-    const user = users.find(u => u.email === email && u.password === password);
+  async getProfile(userId) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
     
-    if (user) {
-      const { password, ...userWithoutPassword } = user;
-      localStorage.setItem(this.storageKey, JSON.stringify(userWithoutPassword));
-      return { success: true, user: userWithoutPassword };
+    if (error && error.code !== 'PGRST116') { // PGRST116: "exact one row not found"
+      console.error('Error fetching profile:', error);
+    }
+    return data;
+  }
+
+  async getAllUsersByAdmin(adminId) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('admin_vinculado', adminId);
+
+    if (error) {
+      console.error('Error fetching users:', error);
+      return [];
+    }
+    return data;
+  }
+
+  async getAllAdmins() {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, nome, email')
+      .eq('perfil', 'admin');
+
+    if (error) {
+      console.error('Error fetching admins:', error);
+      return [];
+    }
+    return data;
+  }
+  
+  async login(email, password) {
+    const DEV_EMAIL = 'robrito10@gmail.com';
+    const DEV_PASS = '17020586';
+
+    if (String(email).trim() === DEV_EMAIL && String(password) === DEV_PASS) {
+      // This is a local-only dev login, does not use Supabase auth
+      const devUser = {
+        id: 'dev_user',
+        nome: 'DEV',
+        email: 'robrito10@gmail.com',
+        perfil: 'dev'
+      };
+      // We simulate a session for the dev user
+      sessionStorage.setItem('dev_user', JSON.stringify(devUser));
+      return { success: true, user: devUser, profile: devUser };
+    }
+
+    // Regular user login
+    sessionStorage.removeItem('dev_user');
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      return { success: false, error: 'Email ou senha inválidos.' };
+    }
+    return { success: true, user: data.user };
+  }
+
+  async register(userData) {
+    if (userData.email === 'robrito10@gmail.com') {
+      return { success: false, error: 'Este email é reservado e não pode ser cadastrado.' };
     }
     
-    return { success: false, error: 'Email ou senha inválidos' };
-  }
-
-  register(userData, loginAfterRegister = true) {
-    const users = this.getAllUsers();
-    
-    if (users.find(u => u.email === userData.email)) {
-      return { success: false, error: 'Email já cadastrado' };
-    }
-
-    if (users.length === 0 && userData.perfil !== 'admin') {
-      return { success: false, error: 'O primeiro usuário deve ser um Administrador' };
-    }
-
-    const newUser = {
-      id: Date.now().toString(),
-      ...userData,
-      createdAt: new Date().toISOString(),
-      trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      isPaid: false
-    };
-
-    users.push(newUser);
-    this.saveUsers(users);
-
-    const { password, ...userWithoutPassword } = newUser;
-    
-    if (loginAfterRegister) {
-      localStorage.setItem(this.storageKey, JSON.stringify(userWithoutPassword));
-    }
-    
-    return { success: true, user: userWithoutPassword };
-  }
-
-  logout() {
-    localStorage.removeItem(this.storageKey);
-  }
-
-  updateUser(userId, updates) {
-    const users = this.getAllUsers();
-    const index = users.findIndex(u => u.id === userId);
-    
-    if (index !== -1) {
-      users[index] = { ...users[index], ...updates };
-      this.saveUsers(users);
-      
-      const currentUser = this.getCurrentUser();
-      if (currentUser && currentUser.id === userId) {
-        const { password, ...userWithoutPassword } = users[index];
-        localStorage.setItem(this.storageKey, JSON.stringify(userWithoutPassword));
+    const { data, error } = await supabase.auth.signUp({
+      email: userData.email,
+      password: userData.password,
+      options: {
+        data: {
+          nome: userData.nome,
+          telefone: userData.telefone,
+          perfil: 'admin'
+        }
       }
-      
-      return { success: true };
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
     }
-    
-    return { success: false, error: 'Usuário não encontrado' };
+    return { success: true, user: data.user };
+  }
+
+  async inviteDriver(email, nome, adminId) {
+    const { data, error } = await supabase.auth.inviteUserByEmail(email, {
+      data: {
+        nome: nome,
+        perfil: 'motorista',
+        admin_vinculado: adminId
+      },
+      redirectTo: window.location.origin
+    });
+
+    if (error) {
+        if (error.message.includes('unique constraint')) {
+            return { success: false, error: 'Este email já está em uso no sistema.' };
+        }
+        return { success: false, error: error.message };
+    }
+    return { success: true };
+  }
+  
+  async updateUserPassword(newPassword) {
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  }
+
+  async logout() {
+    // Also clear dev user session storage
+    sessionStorage.removeItem('dev_user');
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Error logging out:', error);
+    }
+  }
+
+  // Check for dev user in session storage
+  getDevUser() {
+    const devUserJson = sessionStorage.getItem('dev_user');
+    return devUserJson ? JSON.parse(devUserJson) : null;
   }
 }
