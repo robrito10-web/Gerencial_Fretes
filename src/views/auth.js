@@ -1,8 +1,9 @@
 import { createIcons, icons } from 'lucide';
 
 export class AuthView {
-  constructor(authService) {
+  constructor(authService, toastService) {
     this.authService = authService;
+    this.toastService = toastService;
     this.isLogin = true;
   }
 
@@ -14,7 +15,6 @@ export class AuthView {
         <h1><i data-lucide="truck"></i> Gerencial Fretes</h1>
         <p id="auth-subtitle">Entre para gerenciar seus fretes</p>
       </div>
-      <div id="auth-alert"></div>
       <form id="auth-form">
         <div id="register-fields" class="hidden">
           <div class="form-group">
@@ -85,24 +85,25 @@ export class AuthView {
   toggleMode(isLogin) {
     this.isLogin = isLogin;
     const registerFields = document.getElementById('register-fields');
-    const submitText = document.getElementById('submit-text');
     const toggleText = document.getElementById('toggle-text');
     const toggleLink = document.getElementById('toggle-link');
     const subtitle = document.getElementById('auth-subtitle');
+    const form = document.getElementById('auth-form');
+    const button = form.querySelector('button[type="submit"]');
 
     if (this.isLogin) {
       registerFields.classList.add('hidden');
-      submitText.textContent = 'Entrar';
       toggleText.textContent = 'Não tem uma conta?';
       toggleLink.textContent = 'Cadastre-se';
       subtitle.textContent = 'Entre para gerenciar seus fretes';
     } else {
       registerFields.classList.remove('hidden');
-      submitText.textContent = 'Cadastrar';
       toggleText.textContent = 'Já tem uma conta?';
       toggleLink.textContent = 'Entrar';
       subtitle.textContent = 'Crie sua conta de Administrador';
     }
+
+    this._updateAuthButton(button);
   }
 
   async handleLogin() {
@@ -112,10 +113,10 @@ export class AuthView {
     const result = await this.authService.login(email, password);
 
     if (result.success) {
-      this.showAlert('Login realizado com sucesso! Redirecionando...', 'success');
+      this.toastService.show('Login realizado com sucesso! Redirecionando...', 'success');
       // The App.js onAuthStateChange will handle the redirect
     } else {
-      this.showAlert(result.error, 'danger');
+      this.toastService.show(result.error, 'danger');
     }
   }
 
@@ -128,18 +129,26 @@ export class AuthView {
     };
     
     if (userData.password.length < 6) {
-        this.showAlert('A senha deve ter pelo menos 6 caracteres.', 'danger');
+        this.toastService.show('A senha deve ter pelo menos 6 caracteres.', 'danger');
         return;
     }
 
     const result = await this.authService.register(userData);
 
     if (result.success) {
-      this.showAlert('Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta.', 'success');
+      this.toastService.show('Cadastro realizado! Verifique seu e-mail para confirmar a conta.', 'success');
       // The App.js onAuthStateChange will handle redirect after email confirmation
     } else {
-      this.showAlert(result.error, 'danger');
+      this.toastService.show(result.error, 'danger');
     }
+  }
+
+  _updateAuthButton(button) {
+    if (!button) return;
+    const icon = this.isLogin ? 'log-in' : 'user-plus';
+    const text = this.isLogin ? 'Entrar' : 'Cadastrar';
+    button.innerHTML = `<i data-lucide="${icon}"></i><span id="submit-text">${text}</span>`;
+    createIcons({ icons });
   }
 
   setLoading(button, isLoading) {
@@ -149,21 +158,7 @@ export class AuthView {
       button.innerHTML = `<div class="spinner" style="width: 20px; height: 20px; border-width: 2px;"></div>`;
     } else {
       button.disabled = false;
-      const icon = this.isLogin ? 'log-in' : 'user-plus';
-      const text = this.isLogin ? 'Entrar' : 'Cadastrar';
-      button.innerHTML = `<i data-lucide="${icon}"></i><span>${text}</span>`;
-      createIcons({ icons });
+      this._updateAuthButton(button);
     }
-  }
-
-  showAlert(message, type) {
-    const alertDiv = document.getElementById('auth-alert');
-    alertDiv.innerHTML = `
-      <div class="alert alert-${type}">
-        <i data-lucide="${type === 'success' ? 'check-circle' : 'alert-circle'}"></i>
-        ${message}
-      </div>
-    `;
-    createIcons({ icons });
   }
 }

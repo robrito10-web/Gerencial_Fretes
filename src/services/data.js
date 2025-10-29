@@ -49,13 +49,25 @@ export class DataService {
   }
 
   // Tire Changes
-  async getTireChanges(adminId) {
-    const { data, error } = await supabase.from('tire_changes').select('*').eq('admin_id', adminId);
+  async getTireChanges(adminId, carId) {
+    let query = supabase.from('tire_changes').select('*').eq('admin_id', adminId);
+    if (carId) {
+      query = query.eq('car_id', carId);
+    }
+    const { data, error } = await query;
     return error ? [] : data;
   }
 
-  async saveTireChange(change, adminId) {
-    const { data, error } = await supabase.from('tire_changes').insert([{ ...change, admin_id: adminId }]).select();
+  async saveTireChange(change, adminId, photoFile) {
+    let photoUrl = null;
+    if (photoFile) {
+      const filePath = `${adminId}/${change.car_id}/${Date.now()}_${photoFile.name}`;
+      const { data, error } = await this._uploadFileAndGetUrl('tire_change_photos', photoFile, filePath);
+      if (error) return { data: null, error };
+      photoUrl = data.publicUrl;
+    }
+    const changeData = { ...change, admin_id: adminId, photo_url: photoUrl };
+    const { data, error } = await supabase.from('tire_changes').insert([changeData]).select().single();
     return { data, error };
   }
 
